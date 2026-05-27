@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Find Schema Names</title>
+<style>
+body{font-family:monospace;background:#0D1117;color:#C9D1D9;padding:20px;}
+h2{color:#E6EDF3;font-size:16px;}
+.ok{color:#3FB950;}.err{color:#F85149;}.warn{color:#E3B341;}
+.box{background:#161B22;border:1px solid #30363D;border-radius:8px;padding:16px;margin:12px 0;}
+.result{font-size:12px;line-height:1.9;white-space:pre-wrap;}
+button{background:#238636;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-size:13px;margin:4px;}
+button:hover{background:#2EA043;}
+</style>
+</head>
+<body>
+<h2>Step 1 — Find exact GraphQL query names from your schema</h2>
+<p style="color:#8B949E;font-size:13px">Open this from GitHub Pages. Click the button. Results show in 10 seconds.</p>
+
+<div class="box">
+  <button onclick="findNames()">Find All Query Names Now</button>
+  <button onclick="testAll()">Test All Possible Names</button>
+  <div class="result" id="out">Click a button above...</div>
+</div>
+
+<script>
+const URL = "https://9b0f64b5-graphql.production-orch-0336.neo4j.io/graphql";
+const KEY = "d16v0PBfQhJqLwunefWZuYe9rVhqQusk";
+
+async function gql(query) {
+  const r = await fetch(URL, {
+    method: "POST", mode: "cors",
+    headers: { "Content-Type": "application/json", "x-api-key": KEY },
+    body: JSON.stringify({ query })
+  });
+  return r.json();
+}
+
+function log(msg, type="") {
+  const el = document.getElementById("out");
+  el.innerHTML += `<span class="${type}">${msg}\n</span>`;
+}
+
+async function findNames() {
+  document.getElementById("out").innerHTML = "";
+  log("Running GraphQL introspection...", "warn");
+  try {
+    const j = await gql(`{
+      __schema {
+        queryType {
+          fields {
+            name
+            type { name kind ofType { name } }
+          }
+        }
+      }
+    }`);
+    
+    if (j.errors) {
+      log("Introspection error: " + j.errors[0].message, "err");
+      return;
+    }
+    
+    const fields = j.data.__schema.queryType.fields;
+    log(`Found ${fields.length} query fields:\n`, "ok");
+    fields.forEach(f => {
+      const typeName = f.type?.name || f.type?.ofType?.name || "?";
+      log(`  ${f.name} → ${typeName}`);
+    });
+    log("\nCopy the dish/timing/about query names above ↑", "warn");
+  } catch(e) {
+    log("Error: " + e.message, "err");
+  }
+}
+
+async function testAll() {
+  document.getElementById("out").innerHTML = "";
+  log("Testing all possible query name variants...\n", "warn");
+  
+  // Test every possible variant for each node type
+  const tests = [
+    // Dish variants
+    { q: '{ dishes { name } }',   label: 'dishes' },
+    { q: '{ dish { name } }',     label: 'dish (singular)' },
+    { q: '{ Dishes { name } }',   label: 'Dishes (capital D)' },
+    // Timing variants  
+    { q: '{ timings { fullSummary } }',  label: 'timings' },
+    { q: '{ timing { fullSummary } }',   label: 'timing (singular)' },
+    { q: '{ Timings { fullSummary } }',  label: 'Timings (capital T)' },
+    // AboutUs variants
+    { q: '{ aboutuses { city } }',  label: 'aboutuses' },
+    { q: '{ aboutUs { city } }',    label: 'aboutUs (camelCase)' },
+    { q: '{ AboutUs { city } }',    label: 'AboutUs (capital A)' },
+    { q: '{ aboutuses { restaurant } }', label: 'aboutuses.restaurant field' },
+    // Staff (known working)
+    { q: '{ staff { name role } }', label: 'staff (KNOWN WORKING)' },
+    // Category variants
+    { q: '{ categories { name } }', label: 'categories' },
+    { q: '{ category { name } }',   label: 'category (singular)' },
+    // Allergen variants
+    { q: '{ allergens { name } }',  label: 'allergens' },
+    { q: '{ allergen { name } }',   label: 'allergen (singular)' },
+    // RestaurantFeature variants
+    { q: '{ restaurantFeatures { property value } }',  label: 'restaurantFeatures' },
+    { q: '{ restaurantFeature { property value } }',   label: 'restaurantFeature (singular)' },
+    // Restaurant variants
+    { q: '{ restaurants { name } }', label: 'restaurants' },
+    { q: '{ restaurant { name } }',  label: 'restaurant (singular)' },
+  ];
+  
+  for (const t of tests) {
+    try {
+      const j = await gql(t.q);
+      if (j.errors) {
+        log(`❌ ${t.label} — ${j.errors[0].message.substring(0, 80)}`, "err");
+      } else {
+        const key = Object.keys(j.data || {})[0];
+        const count = Array.isArray(j.data?.[key]) ? j.data[key].length : "?";
+        log(`✅ ${t.label} — ${count} nodes returned`, "ok");
+      }
+    } catch(e) {
+      log(`❌ ${t.label} — ${e.message}`, "err");
+    }
+  }
+  
+  log("\nAll green ✅ = working query names. Red ❌ = wrong name.", "warn");
+  log("Copy all ✅ results and paste them back to Claude.", "warn");
+}
+</script>
+</body>
+</html>
